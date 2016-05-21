@@ -1,7 +1,7 @@
-# Enterprise Agreement Azure Expense Dashboard
+# Azure Resource Usage Dashboard ( EA)
 [![Deploy to Azure](http://azuredeploy.net/deploybutton.png)](https://azuredeploy.net/)
 
-The EA Azure expense dashboard provides graphical view of expenses incurred by azure resources linked to an Enterprise Agreement.
+The EA Azure Resource Usage Dashboard  provides graphical view of expenses incurred by azure resources linked to an Enterprise Agreement.
 
 ## Features
 

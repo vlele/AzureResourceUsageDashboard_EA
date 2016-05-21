@@ -1,0 +1,209 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2014-04-01-preview/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"siteName": {
+			"type": "string",
+			"minLength": 1,
+			"metadata": {
+				"description": "The name of the web app that you wish to create. Use letters and numbers only."
+			}
+		},
+		"hostingPlanName": {
+			"type": "string",
+			"minLength": 1,
+			"metadata": {
+				"description": "The name of the App Service plan to use for hosting the web app."
+			}
+		},
+		"siteLocation": {
+			"type": "string",
+			"metadata": {
+				"description": "The hosting location for the site."
+			}
+		},
+		"sku": {
+			"type": "string",
+			"allowedValues": ["Free",
+			"Shared",
+			"Basic",
+			"Standard"],
+			"defaultValue": "Free",
+			"metadata": {
+				"description": "The pricing tier for the hosting plan."
+			}
+		},
+		"workerSize": {
+			"type": "string",
+			"allowedValues": ["0",
+			"1",
+			"2"],
+			"defaultValue": "0",
+			"metadata": {
+				"description": "The instance size of the hosting plan (small, medium, or large)."
+			}
+		},
+		"EA-EnrollmentNumber": {
+			"type": "string",
+			"defaultValue": "Enrollment Number for EA Subscription",
+			"minLength": 1,
+			"metadata": {
+				"description": "Enrollment Number for EA Subscription"
+			}
+		},
+		"EA-APIAccessKey": {
+			"type": "string",
+			"defaultValue": "API Access Key for above EnrollmentNumber",
+			"minLength": 1,
+			"metadata": {
+				"description": "API Access Key for above EnrollmentNumber"
+			}
+		},
+		"repoUrl": {
+			"type": "string"
+		},
+		"branch": {
+			"type": "string"
+		},
+		"storageAccountType": {
+			"type": "string",
+			"defaultValue": "Standard_LRS",
+			"allowedValues": ["Standard_LRS",
+			"Standard_GRS",
+			"Standard_ZRS",
+			"Premium_LRS"],
+			"metadata": {
+				"description": "Storage Account type"
+			}
+		},
+    "webjobFrequency": {
+      "type": "string",
+      "allowedValues": [
+        "15",
+        "30",
+        "45",
+        "60"
+      ],
+      "defaultValue": "15",
+      "metadata": {
+        "description": "Web job execution frequency in minutes."
+      }
+    }
+	},
+	"variables": {
+		"apiVersion": "2015-06-15",
+		"storageAccountName": "[toLower(parameters('siteName'))]",
+		"webSitePubCreds": "[resourceId('Microsoft.Web/sites/config', parameters('siteName'), 'publishingCredentials')]",
+		"jobCollectionName": "[toLower(parameters('siteName'))]"
+	},
+	"resources": [{
+		"apiVersion": "2014-11-01",
+		"name": "[parameters('hostingPlanName')]",
+		"type": "Microsoft.Web/serverFarms",
+		"location": "[parameters('siteLocation')]",
+		"properties": {
+			"name": "[parameters('hostingPlanName')]",
+			"sku": "[parameters('sku')]",
+			"workerSize": "[parameters('workerSize')]",
+			"numberOfWorkers": 1
+		}
+	},
+	{
+		"apiVersion": "2014-11-01",
+		"name": "[parameters('siteName')]",
+		"type": "Microsoft.Web/Sites",
+		"location": "[parameters('siteLocation')]",
+		"dependsOn": ["[concat('Microsoft.Web/serverFarms/', parameters('hostingPlanName'))]"],
+		"tags": {
+			"[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('hostingPlanName'))]": "empty"
+		},
+		"properties": {
+			"name": "[parameters('siteName')]",
+			"serverFarm": "[parameters('hostingPlanName')]"
+		},
+		"resources": [{
+			"apiVersion": "2014-11-01",
+			"name": "web",
+			"type": "sourcecontrols",
+			"dependsOn": ["[resourceId('Microsoft.Web/Sites', parameters('siteName'))]",
+			"[concat('Microsoft.Web/Sites/', parameters('siteName'), '/config/appSettings')]"],
+			"properties": {
+				"RepoUrl": "[parameters('repoUrl')]",
+				"branch": "[parameters('branch')]",
+				"IsManualIntegration": true
+			}
+		},
+		{
+			"apiVersion": "[variables('apiVersion')]",
+			"location": "[parameters('siteLocation')]",
+			"name": "[variables('storageAccountName')]",
+			"properties": {
+				"accountType": "[parameters('storageAccountType')]"
+			},
+			"type": "Microsoft.Storage/storageAccounts",
+			"dependsOn": ["[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"]
+		},
+		{
+			"apiVersion": "2014-08-01-preview",
+			"name": "[variables('jobCollectionName')]",
+			"type": "Microsoft.Scheduler/jobCollections",
+			"dependsOn": ["[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"],
+			"location": "[parameters('siteLocation')]",
+			"properties": {
+				"sku": {
+					"name": "standard"
+				},
+				"quota": {
+					"maxJobCount": "10",
+					"maxRecurrence": {
+						"Frequency": "minute",
+						"interval": "1"
+					}
+				}
+			},
+			"resources": [{
+				"apiVersion": "2014-08-01-preview",
+				"name": "AzureBillingWebJob",
+				"type": "jobs",
+				"dependsOn": ["[resourceId('Microsoft.Scheduler/jobCollections', variables('jobCollectionName'))]"],
+				"properties": {
+					"startTime": "2015-02-10T00:08:00Z",
+					"action": {
+						"request": {
+							"uri": "[concat('https://',reference(resourceId('Microsoft.Web/Sites',parameters('siteName'))).enabledHostNames[1],'/api/triggeredjobs/AzureBillingWebJob/run')]",
+							"method": "POST",
+							"authentication": {
+								"type": "Basic",
+								"username": "[list(variables('webSitePubCreds'), '2014-11-01').properties.publishingUserName]",
+								"password": "[list(variables('webSitePubCreds'), '2014-11-01').properties.publishingPassword]"
+							}
+						},
+						"type": "http",
+						"retryPolicy": {
+							"retryType": "Fixed",
+							"retryInterval": "PT1M",
+							"retryCount": 2
+						}
+					},
+					"state": "enabled",
+					"recurrence": {
+						"frequency": "minute",
+						"interval": "[parameters('webjobFrequency')]"
+					}
+				}
+			}]
+		},
+		{
+			"apiVersion": "2014-11-01",
+			"name": "appSettings",
+			"type": "config",
+			"dependsOn": ["[concat('Microsoft.Web/Sites/', parameters('siteName'))]"],
+			"properties": {
+				"EA-EnrollmentNumber": "[parameters('EA-EnrollmentNumber')]",
+				"EA-APIAccessKey": "[parameters('EA-APIAccessKey')]",
+				"StorageConnectionString": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2015-05-01-preview').key1)]",
+				"API-URL": "[concat('https://',parameters('siteName'),'.azurewebsites.net')]"
+			}
+		}]
+	}]
+}

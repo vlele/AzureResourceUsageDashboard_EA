@@ -4,7 +4,8 @@
 	"parameters": {
 		"siteName": {
 			"type": "string",
-			"minLength": 1,
+			"minLength": 2,
+			"maxLength":60,
 			"metadata": {
 				"description": "The name of the web app that you wish to create. Use letters and numbers only."
 			}
